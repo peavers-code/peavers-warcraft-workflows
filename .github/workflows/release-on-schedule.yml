@@ -86,4 +86,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
         run: |
-          gh workflow run ${{ inputs.packaging_workflow }} --repo ${{ github.repository }} --ref master
+          curl -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token $GH_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/${{ inputs.packaging_workflow }}/dispatches" \
+            -d '{"ref":"master"}'
