@@ -85,23 +85,9 @@ jobs:
           # Copy issue templates
           cp -r ../source/.github/ISSUE_TEMPLATE/* .github/ISSUE_TEMPLATE/
 
-          # Copy caller workflow if it doesn't exist or update it
+          # Copy caller workflow from source if target doesn't have one
           if [ ! -f .github/workflows/validate-issues.yml ]; then
-            cat > .github/workflows/validate-issues.yml << 'EOF'
-name: Validate Issues
-
-on:
-  issues:
-    types: [opened]
-
-permissions:
-  issues: write
-
-jobs:
-  validate:
-    uses: peavers-warcraft/workflow-templates/.github/workflows/validate-issues.yml@main
-    secrets: inherit
-EOF
+            cp ../source/.github/workflows/validate-issues-caller.yml .github/workflows/validate-issues.yml
           fi
 
           # Check for changes
@@ -134,23 +120,23 @@ EOF
         run: |
           cd target
 
-          # Write PR body to file
-          cat > /tmp/pr_body.md << 'PRBODY'
-## Summary
-This PR syncs the latest issue templates from the [workflow-templates](https://github.com/peavers-warcraft/workflow-templates) repository.
-
-## Changes
-- Updated `.github/ISSUE_TEMPLATE/` directory
-- Added/updated validation workflow
-
-## What's included
-- **Bug Report template**: Guides users to provide WoW version, addon version, error text, and reproduction steps
-- **Feature Request template**: Structured feature proposals
-- **Issue validation workflow**: Auto-closes issues that don't follow the template
-
----
-*This PR was automatically created by the template sync workflow.*
-PRBODY
+          # Write PR body to file using echo
+          {
+            echo "## Summary"
+            echo "This PR syncs the latest issue templates from the [workflow-templates](https://github.com/peavers-warcraft/workflow-templates) repository."
+            echo ""
+            echo "## Changes"
+            echo "- Updated \`.github/ISSUE_TEMPLATE/\` directory"
+            echo "- Added/updated validation workflow"
+            echo ""
+            echo "## What's included"
+            echo "- **Bug Report template**: Guides users to provide WoW version, addon version, error text, and reproduction steps"
+            echo "- **Feature Request template**: Structured feature proposals"
+            echo "- **Issue validation workflow**: Auto-closes issues that don't follow the template"
+            echo ""
+            echo "---"
+            echo "*This PR was automatically created by the template sync workflow.*"
+          } > /tmp/pr_body.md
 
           gh pr create \
             --title "Sync issue templates from workflow-templates" \
