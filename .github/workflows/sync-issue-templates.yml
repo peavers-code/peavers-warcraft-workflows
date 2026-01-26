@@ -134,13 +134,13 @@ EOF
         run: |
           cd target
 
-          gh pr create \
-            --title "Sync issue templates from workflow-templates" \
-            --body "## Summary
+          # Write PR body to file
+          cat > /tmp/pr_body.md << 'PRBODY'
+## Summary
 This PR syncs the latest issue templates from the [workflow-templates](https://github.com/peavers-warcraft/workflow-templates) repository.
 
 ## Changes
-- Updated \`.github/ISSUE_TEMPLATE/\` directory
+- Updated `.github/ISSUE_TEMPLATE/` directory
 - Added/updated validation workflow
 
 ## What's included
@@ -149,7 +149,12 @@ This PR syncs the latest issue templates from the [workflow-templates](https://g
 - **Issue validation workflow**: Auto-closes issues that don't follow the template
 
 ---
-*This PR was automatically created by the template sync workflow.*" \
+*This PR was automatically created by the template sync workflow.*
+PRBODY
+
+          gh pr create \
+            --title "Sync issue templates from workflow-templates" \
+            --body-file /tmp/pr_body.md \
             --base master \
             --label "automated" || echo "PR may already exist"
 
