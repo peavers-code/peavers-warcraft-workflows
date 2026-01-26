@@ -104,3 +104,4 @@ body:
       description: Add screenshots to help explain your problem (drag and drop images here)
     validations:
       required: false
+
