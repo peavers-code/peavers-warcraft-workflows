@@ -1,4 +1,4 @@
-name: Sync Issue Templates
+name: Sync GitHub Config
 
 on:
   workflow_dispatch:
@@ -16,6 +16,7 @@ on:
       - main
     paths:
       - '.github/ISSUE_TEMPLATE/**'
+      - '.github/FUNDING.yml'
 
 permissions:
   contents: write
@@ -85,6 +86,9 @@ jobs:
           # Copy issue templates
           cp -r ../source/.github/ISSUE_TEMPLATE/* .github/ISSUE_TEMPLATE/
 
+          # Copy FUNDING.yml
+          cp ../source/.github/FUNDING.yml .github/FUNDING.yml
+
           # Copy caller workflow from source if target doesn't have one
           if [ ! -f .github/workflows/validate-issues.yml ]; then
             cp ../source/.github/workflows/validate-issues-caller.yml .github/workflows/validate-issues.yml
@@ -125,23 +129,25 @@ jobs:
           # Write PR body to file using echo
           {
             echo "## Summary"
-            echo "This PR syncs the latest issue templates from the [workflow-templates](https://github.com/peavers-warcraft/workflow-templates) repository."
+            echo "This PR syncs GitHub configuration from the [workflow-templates](https://github.com/peavers-warcraft/workflow-templates) repository."
             echo ""
             echo "## Changes"
             echo "- Updated \`.github/ISSUE_TEMPLATE/\` directory"
+            echo "- Updated \`.github/FUNDING.yml\`"
             echo "- Added/updated validation workflow"
             echo ""
             echo "## What's included"
             echo "- **Bug Report template**: Guides users to provide WoW version, addon version, error text, and reproduction steps"
             echo "- **Feature Request template**: Structured feature proposals"
             echo "- **Issue validation workflow**: Auto-closes issues that don't follow the template"
+            echo "- **FUNDING.yml**: Patreon sponsorship link"
             echo ""
             echo "---"
-            echo "*This PR was automatically created by the template sync workflow.*"
+            echo "*This PR was automatically created by the sync workflow.*"
           } > /tmp/pr_body.md
 
           gh pr create \
-            --title "Sync issue templates from workflow-templates" \
+            --title "Sync GitHub config from workflow-templates" \
             --body-file /tmp/pr_body.md \
             --base master || echo "PR may already exist or failed to create"
 
