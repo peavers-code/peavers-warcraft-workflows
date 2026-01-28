@@ -82,8 +82,10 @@ jobs:
           git push origin "$NEW_TAG"
           echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
 
-      - name: Fetch tags for packager
-        run: git fetch --tags --force
+      - name: Checkout the tag for packager
+        run: |
+          git fetch --tags --force
+          git checkout "${{ steps.tag.outputs.tag }}"
 
       - name: Package and release
         uses: BigWigsMods/packager@v2
