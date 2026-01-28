@@ -66,7 +66,7 @@ jobs:
           git config user.name "${{ inputs.git_user_name }}"
           git config user.email "${{ inputs.git_user_email }}"
           git add ${{ inputs.toc_file }}
-          git commit -m "chore: bump version to ${{ steps.version.outputs.new_version }}"
+          git commit -m "chore: bump version to ${{ steps.version.outputs.new_version }} [skip ci]"
           git push
 
       - name: Create and push tag
