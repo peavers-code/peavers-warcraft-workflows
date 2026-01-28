@@ -107,6 +107,13 @@ jobs:
             --notes "Release ${{ steps.version.outputs.new_version }}" \
             --latest
 
+      - name: Upload to CurseForge
+        uses: peavers-warcraft/workflow-templates/.github/actions/upload-curseforge@master
+        with:
+          api_key: ${{ secrets.CF_API_KEY }}
+          toc_file: ${{ inputs.toc_file }}
+          zip_file: ${{ steps.package.outputs.zip_name }}
+          changelog: "Release ${{ steps.version.outputs.new_version }}"
 
   notify-failure:
     runs-on: ubuntu-latest

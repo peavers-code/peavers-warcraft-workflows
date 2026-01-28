@@ -1,0 +1,146 @@
+name: 'Upload to CurseForge'
+description: 'Uploads a WoW addon to CurseForge'
+
+inputs:
+  api_key:
+    description: 'CurseForge API key'
+    required: true
+  toc_file:
+    description: 'Path to the TOC file'
+    required: true
+  zip_file:
+    description: 'Path to the zip file to upload'
+    required: true
+  release_type:
+    description: 'Release type: alpha, beta, or release'
+    required: false
+    default: 'release'
+  changelog:
+    description: 'Changelog text'
+    required: false
+    default: ''
+
+outputs:
+  file_id:
+    description: 'The CurseForge file ID of the uploaded file'
+    value: ${{ steps.upload.outputs.file_id }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Extract project info from TOC
+      id: toc
+      shell: bash
+      run: |
+        TOC_FILE="${{ inputs.toc_file }}"
+
+        # Extract project ID
+        PROJECT_ID=$(grep -oP '(?<=X-Curse-Project-ID:\s)\d+' "$TOC_FILE" || echo "")
+        if [ -z "$PROJECT_ID" ]; then
+          echo "::error::No X-Curse-Project-ID found in $TOC_FILE"
+          exit 1
+        fi
+        echo "project_id=$PROJECT_ID" >> $GITHUB_OUTPUT
+        echo "Found CurseForge project ID: $PROJECT_ID"
+
+        # Extract interface versions (can be comma-separated)
+        INTERFACE=$(grep -oP '(?<=## Interface:\s)[\d, ]+' "$TOC_FILE" | tr -d ' ')
+        echo "interface=$INTERFACE" >> $GITHUB_OUTPUT
+        echo "Found interface version(s): $INTERFACE"
+
+    - name: Get CurseForge game versions
+      id: versions
+      shell: bash
+      env:
+        CF_API_KEY: ${{ inputs.api_key }}
+      run: |
+        # Fetch available game versions from CurseForge
+        VERSIONS_JSON=$(curl -s -H "X-Api-Token: $CF_API_KEY" \
+          "https://wow.curseforge.com/api/game/versions")
+
+        # Parse interface versions and find matching CF version IDs
+        INTERFACE="${{ steps.toc.outputs.interface }}"
+        VERSION_IDS=""
+
+        # Split by comma and process each interface version
+        IFS=',' read -ra IFACE_ARRAY <<< "$INTERFACE"
+        for iface in "${IFACE_ARRAY[@]}"; do
+          iface=$(echo "$iface" | tr -d ' ')
+
+          # Find matching version ID from CF API response
+          # The API returns objects with gameVersionTypeID, id, name, slug
+          VERSION_ID=$(echo "$VERSIONS_JSON" | jq -r --arg iface "$iface" \
+            '.[] | select(.name | contains($iface)) | .id' | head -1)
+
+          if [ -n "$VERSION_ID" ] && [ "$VERSION_ID" != "null" ]; then
+            if [ -n "$VERSION_IDS" ]; then
+              VERSION_IDS="$VERSION_IDS,$VERSION_ID"
+            else
+              VERSION_IDS="$VERSION_ID"
+            fi
+          fi
+        done
+
+        # If no versions found, try to get retail version
+        if [ -z "$VERSION_IDS" ]; then
+          # Get the latest retail version as fallback
+          VERSION_ID=$(echo "$VERSIONS_JSON" | jq -r \
+            '[.[] | select(.gameVersionTypeID == 517)] | sort_by(.id) | last | .id')
+          if [ -n "$VERSION_ID" ] && [ "$VERSION_ID" != "null" ]; then
+            VERSION_IDS="$VERSION_ID"
+          fi
+        fi
+
+        if [ -z "$VERSION_IDS" ]; then
+          echo "::error::Could not determine CurseForge game version IDs"
+          exit 1
+        fi
+
+        echo "version_ids=$VERSION_IDS" >> $GITHUB_OUTPUT
+        echo "Using CurseForge version IDs: $VERSION_IDS"
+
+    - name: Upload to CurseForge
+      id: upload
+      shell: bash
+      env:
+        CF_API_KEY: ${{ inputs.api_key }}
+      run: |
+        PROJECT_ID="${{ steps.toc.outputs.project_id }}"
+        VERSION_IDS="${{ steps.versions.outputs.version_ids }}"
+        ZIP_FILE="${{ inputs.zip_file }}"
+        RELEASE_TYPE="${{ inputs.release_type }}"
+        CHANGELOG="${{ inputs.changelog }}"
+
+        # Build game versions array for JSON
+        VERSIONS_ARRAY=$(echo "$VERSION_IDS" | tr ',' '\n' | jq -R 'tonumber' | jq -s '.')
+
+        # Build metadata JSON
+        METADATA=$(jq -n \
+          --argjson gameVersions "$VERSIONS_ARRAY" \
+          --arg releaseType "$RELEASE_TYPE" \
+          --arg changelog "$CHANGELOG" \
+          '{changelog: $changelog, releaseType: $releaseType, gameVersions: $gameVersions}')
+
+        echo "Uploading to CurseForge project $PROJECT_ID..."
+        echo "Metadata: $METADATA"
+
+        RESPONSE=$(curl -s -w "\n%{http_code}" \
+          -H "X-Api-Token: $CF_API_KEY" \
+          -F "metadata=$METADATA" \
+          -F "file=@$ZIP_FILE" \
+          "https://wow.curseforge.com/api/projects/$PROJECT_ID/upload-file")
+
+        HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+        BODY=$(echo "$RESPONSE" | sed '$d')
+
+        echo "Response code: $HTTP_CODE"
+        echo "Response body: $BODY"
+
+        if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+          FILE_ID=$(echo "$BODY" | jq -r '.id // empty')
+          echo "file_id=$FILE_ID" >> $GITHUB_OUTPUT
+          echo "Successfully uploaded to CurseForge! File ID: $FILE_ID"
+        else
+          echo "::error::CurseForge upload failed with status $HTTP_CODE: $BODY"
+          exit 1
+        fi
