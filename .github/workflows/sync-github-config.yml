@@ -37,6 +37,11 @@ jobs:
           - PeaversAlwaysSquare
           - PeaversTalentsData
           - PeaversCurrencyData
+          - PeaversCVars
+          - PeaversSafeList
+          - PeaversItemLevel
+          - PeaversSpellExporter
+          - PeaversUI
     steps:
       - name: Check if should run for this repo
         id: should-run
