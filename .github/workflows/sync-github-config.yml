@@ -41,6 +41,7 @@ jobs:
           - PeaversSafeList
           - PeaversItemLevel
           - PeaversSpellExporter
+          - PeaversSystemBars
           - PeaversUI
     steps:
       - name: Check if should run for this repo
