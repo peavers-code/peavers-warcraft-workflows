@@ -46,8 +46,11 @@ jobs:
 
       - name: Random delay
         run: |
-          # Random delay between 10-60 seconds to help avoid race conditions
-          sleep $(( RANDOM % 50 + 10 ))
+          # Random delay between 10-120 seconds to help avoid race conditions
+          # when multiple PRs are merging in parallel
+          DELAY=$(( RANDOM % 110 + 10 ))
+          echo "Waiting ${DELAY}s before merge attempt..."
+          sleep $DELAY
 
       - name: Merge PR with retries
         run: |
