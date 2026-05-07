@@ -19,6 +19,10 @@ inputs:
     description: 'Changelog text'
     required: false
     default: ''
+  changelog_type:
+    description: 'Changelog format: text or markdown'
+    required: false
+    default: 'markdown'
 
 outputs:
   file_id:
@@ -110,6 +114,7 @@ runs:
         ZIP_FILE="${{ inputs.zip_file }}"
         RELEASE_TYPE="${{ inputs.release_type }}"
         CHANGELOG="${{ inputs.changelog }}"
+        CHANGELOG_TYPE="${{ inputs.changelog_type }}"
 
         # Build game versions array for JSON
         VERSIONS_ARRAY=$(echo "$VERSION_IDS" | tr ',' '\n' | jq -R 'tonumber' | jq -s '.')
@@ -119,7 +124,8 @@ runs:
           --argjson gameVersions "$VERSIONS_ARRAY" \
           --arg releaseType "$RELEASE_TYPE" \
           --arg changelog "$CHANGELOG" \
-          '{changelog: $changelog, releaseType: $releaseType, gameVersions: $gameVersions}')
+          --arg changelogType "$CHANGELOG_TYPE" \
+          '{changelog: $changelog, changelogType: $changelogType, releaseType: $releaseType, gameVersions: $gameVersions}')
 
         echo "Uploading to CurseForge project $PROJECT_ID..."
         echo "Metadata: $METADATA"

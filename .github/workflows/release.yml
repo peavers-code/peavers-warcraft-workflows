@@ -82,6 +82,44 @@ jobs:
           git push origin "$NEW_TAG"
           echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
 
+      - name: Generate changelog
+        id: changelog
+        uses: peavers-warcraft/workflow-templates/.github/actions/generate-changelog@master
+        with:
+          addon_name: ${{ inputs.addon_name }}
+          version: ${{ steps.version.outputs.new_version }}
+
+      - name: Generate Changelog.lua
+        run: |
+          ADDON_NAME="${{ inputs.addon_name }}"
+          NEW_VERSION="${{ steps.version.outputs.new_version }}"
+          CHANGELOG_JSON='${{ steps.changelog.outputs.changelog_json }}'
+
+          # Build Lua entries from JSON
+          LUA_ENTRIES=""
+          if [ -n "$CHANGELOG_JSON" ] && [ "$CHANGELOG_JSON" != "[]" ]; then
+            LUA_ENTRIES=$(echo "$CHANGELOG_JSON" | jq -r '.[] | "        { type = \"" + .type + "\", text = \"" + (.text | gsub("\""; "\\\"")) + "\" },"')
+          fi
+
+          {
+            echo "-- Auto-generated during release. Do not edit."
+            echo "PeaversChangelogs = PeaversChangelogs or {}"
+            echo "PeaversChangelogs[\"${ADDON_NAME}\"] = {"
+            echo "    version = \"${NEW_VERSION}\","
+            echo "    entries = {"
+            if [ -n "$LUA_ENTRIES" ]; then
+              echo "$LUA_ENTRIES"
+            fi
+            echo "    }"
+            echo "}"
+          } > Changelog.lua
+
+          # Ensure Changelog.lua is in the TOC file
+          TOC_FILE="${{ inputs.toc_file }}"
+          if ! grep -q "^Changelog.lua" "$TOC_FILE"; then
+            echo "Changelog.lua" >> "$TOC_FILE"
+          fi
+
       - name: Package addon
         id: package
         run: |
@@ -104,7 +142,7 @@ jobs:
           gh release create "${{ steps.tag.outputs.tag }}" \
             "${{ steps.package.outputs.zip_name }}" \
             --title "${{ inputs.addon_name }} v${{ steps.version.outputs.new_version }}" \
-            --notes "Release ${{ steps.version.outputs.new_version }}" \
+            --notes "${{ steps.changelog.outputs.changelog }}" \
             --latest
 
       - name: Upload to CurseForge
@@ -113,7 +151,7 @@ jobs:
           api_key: ${{ secrets.CF_API_KEY }}
           toc_file: ${{ inputs.toc_file }}
           zip_file: ${{ steps.package.outputs.zip_name }}
-          changelog: "Release ${{ steps.version.outputs.new_version }}"
+          changelog: ${{ steps.changelog.outputs.changelog }}
 
   notify-failure:
     runs-on: ubuntu-latest

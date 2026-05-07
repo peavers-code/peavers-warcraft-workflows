@@ -1,0 +1,131 @@
+name: 'Generate Changelog'
+description: 'Generates a categorized changelog from git commits between releases'
+
+inputs:
+  addon_name:
+    description: 'Addon name used for tag prefix matching (e.g., PeaversSystemBars)'
+    required: true
+  version:
+    description: 'The new version being released (e.g., 1.0.8)'
+    required: true
+
+outputs:
+  changelog:
+    description: 'Formatted markdown changelog'
+    value: ${{ steps.generate.outputs.changelog }}
+  changelog_json:
+    description: 'JSON array of changelog entries for Lua generation'
+    value: ${{ steps.generate.outputs.changelog_json }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Generate changelog from commits
+      id: generate
+      shell: bash
+      run: |
+        ADDON_NAME="${{ inputs.addon_name }}"
+        NEW_VERSION="${{ inputs.version }}"
+
+        # Find the previous tag for this addon (excluding the one we just created)
+        CURRENT_TAG="${ADDON_NAME}-${NEW_VERSION}"
+        PREV_TAG=$(git tag --list "${ADDON_NAME}-*" --sort=-version:refname \
+          | grep -v "^${CURRENT_TAG}$" \
+          | head -1)
+
+        if [ -z "$PREV_TAG" ]; then
+          echo "No previous tag found — first release"
+          CHANGELOG="Initial release of ${ADDON_NAME}"
+          CHANGELOG_JSON="[]"
+
+          echo "changelog<<CHANGELOG_EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "CHANGELOG_EOF" >> $GITHUB_OUTPUT
+          echo "changelog_json=$CHANGELOG_JSON" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+
+        echo "Generating changelog: ${PREV_TAG}..HEAD"
+
+        # Get commits between tags, excluding noise
+        COMMITS=$(git log "${PREV_TAG}..HEAD" --oneline --no-merges \
+          | grep -v "chore: bump version" \
+          | grep -v "chore: Sync" \
+          | grep -v "Data update:" \
+          | grep -v "\[skip ci\]" \
+          || true)
+
+        if [ -z "$COMMITS" ]; then
+          echo "No meaningful commits found"
+          CHANGELOG="Maintenance update — internal improvements"
+          CHANGELOG_JSON="[]"
+
+          echo "changelog<<CHANGELOG_EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "CHANGELOG_EOF" >> $GITHUB_OUTPUT
+          echo "changelog_json=$CHANGELOG_JSON" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+
+        # Categorize commits
+        FEATURES=""
+        FIXES=""
+        FEATURES_JSON=""
+        FIXES_JSON=""
+
+        while IFS= read -r line; do
+          # Strip the short hash prefix
+          MSG=$(echo "$line" | sed 's/^[a-f0-9]* //')
+
+          if echo "$MSG" | grep -qi "^feat:"; then
+            # Strip prefix and clean up
+            TEXT=$(echo "$MSG" | sed 's/^[Ff]eat:\s*//' | sed 's/^[[:space:]]*//')
+            [ -n "$TEXT" ] || continue
+            FEATURES="${FEATURES}- ${TEXT}\n"
+
+            # Escape for JSON
+            ESCAPED=$(echo "$TEXT" | sed 's/\\/\\\\/g; s/"/\\"/g')
+            FEATURES_JSON="${FEATURES_JSON}{\"type\":\"feature\",\"text\":\"${ESCAPED}\"},"
+
+          elif echo "$MSG" | grep -qi "^fix:"; then
+            TEXT=$(echo "$MSG" | sed 's/^[Ff]ix:\s*//' | sed 's/^[[:space:]]*//')
+            [ -n "$TEXT" ] || continue
+            FIXES="${FIXES}- ${TEXT}\n"
+
+            ESCAPED=$(echo "$TEXT" | sed 's/\\/\\\\/g; s/"/\\"/g')
+            FIXES_JSON="${FIXES_JSON}{\"type\":\"fix\",\"text\":\"${ESCAPED}\"},"
+          fi
+        done <<< "$COMMITS"
+
+        # Build markdown changelog
+        CHANGELOG="## What's New in ${NEW_VERSION}"
+
+        if [ -n "$FEATURES" ]; then
+          CHANGELOG="${CHANGELOG}\n\n### Features\n$(echo -e "$FEATURES" | sed '/^$/d')"
+        fi
+
+        if [ -n "$FIXES" ]; then
+          CHANGELOG="${CHANGELOG}\n\n### Bug Fixes\n$(echo -e "$FIXES" | sed '/^$/d')"
+        fi
+
+        # If no feat/fix commits found, fall back
+        if [ -z "$FEATURES" ] && [ -z "$FIXES" ]; then
+          CHANGELOG="Maintenance update — internal improvements"
+          CHANGELOG_JSON="[]"
+        else
+          # Build JSON array (strip trailing comma)
+          ALL_JSON="${FEATURES_JSON}${FIXES_JSON}"
+          CHANGELOG_JSON="[${ALL_JSON%,}]"
+        fi
+
+        # Output using heredoc delimiter for multiline
+        echo "changelog<<CHANGELOG_EOF" >> $GITHUB_OUTPUT
+        echo -e "$CHANGELOG" >> $GITHUB_OUTPUT
+        echo "CHANGELOG_EOF" >> $GITHUB_OUTPUT
+
+        echo "changelog_json<<JSON_EOF" >> $GITHUB_OUTPUT
+        echo "$CHANGELOG_JSON" >> $GITHUB_OUTPUT
+        echo "JSON_EOF" >> $GITHUB_OUTPUT
+
+        echo "Generated changelog:"
+        echo -e "$CHANGELOG"
