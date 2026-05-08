@@ -29,8 +29,13 @@ runs:
 
         # Find the previous tag for this addon (excluding the one we just created)
         CURRENT_TAG="${ADDON_NAME}-${NEW_VERSION}"
-        ALL_TAGS=$(git tag --list "${ADDON_NAME}-*" --sort=-version:refname)
-        PREV_TAG=$(echo "$ALL_TAGS" | awk -v skip="$CURRENT_TAG" '$0 != skip { print; exit }')
+        PREV_TAG=""
+        while IFS= read -r tag; do
+          if [ -n "$tag" ] && [ "$tag" != "$CURRENT_TAG" ]; then
+            PREV_TAG="$tag"
+            break
+          fi
+        done <<< "$(git tag --list "${ADDON_NAME}-*" --sort=-version:refname)"
 
         if [ -z "$PREV_TAG" ]; then
           echo "No previous tag found — first release"
