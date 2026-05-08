@@ -30,8 +30,7 @@ runs:
         # Find the previous tag for this addon (excluding the one we just created)
         CURRENT_TAG="${ADDON_NAME}-${NEW_VERSION}"
         PREV_TAG=$(git tag --list "${ADDON_NAME}-*" --sort=-version:refname \
-          | grep -v "^${CURRENT_TAG}$" \
-          | head -1)
+          | awk -v skip="$CURRENT_TAG" '$0 != skip { print; exit }')
 
         if [ -z "$PREV_TAG" ]; then
           echo "No previous tag found — first release"
@@ -49,10 +48,7 @@ runs:
 
         # Get commits between tags, excluding noise
         COMMITS=$(git log "${PREV_TAG}..HEAD" --oneline --no-merges \
-          | grep -v "chore: bump version" \
-          | grep -v "chore: Sync" \
-          | grep -v "Data update:" \
-          | grep -v "\[skip ci\]" \
+          | grep -v -e "chore: bump version" -e "chore: Sync" -e "Data update:" -e "\[skip ci\]" \
           || true)
 
         if [ -z "$COMMITS" ]; then
