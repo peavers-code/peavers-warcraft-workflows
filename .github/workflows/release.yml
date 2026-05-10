@@ -90,11 +90,12 @@ jobs:
           version: ${{ steps.version.outputs.new_version }}
 
       - name: Generate Changelog.lua
+        env:
+          ADDON_NAME: ${{ inputs.addon_name }}
+          NEW_VERSION: ${{ steps.version.outputs.new_version }}
+          CHANGELOG_JSON: ${{ steps.changelog.outputs.changelog_json }}
+          TOC_FILE: ${{ inputs.toc_file }}
         run: |
-          ADDON_NAME="${{ inputs.addon_name }}"
-          NEW_VERSION="${{ steps.version.outputs.new_version }}"
-          CHANGELOG_JSON='${{ steps.changelog.outputs.changelog_json }}'
-
           # Build Lua entries from JSON
           LUA_ENTRIES=""
           if [ -n "$CHANGELOG_JSON" ] && [ "$CHANGELOG_JSON" != "[]" ]; then
@@ -115,7 +116,6 @@ jobs:
           } > Changelog.lua
 
           # Ensure Changelog.lua is in the TOC file
-          TOC_FILE="${{ inputs.toc_file }}"
           if ! grep -q "^Changelog.lua" "$TOC_FILE"; then
             echo "Changelog.lua" >> "$TOC_FILE"
           fi
