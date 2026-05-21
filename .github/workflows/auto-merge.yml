@@ -24,7 +24,7 @@ permissions:
 
 jobs:
   auto-merge:
-    runs-on: ${{ inputs.use_self_hosted && 'self-hosted' || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.use_self_hosted && 'warcraft-runners' || 'ubuntu-latest' }}
     # Security: Only run for PRs from the same repo (not forks) AND from allowed user
     if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login == inputs.allowed_user
 
