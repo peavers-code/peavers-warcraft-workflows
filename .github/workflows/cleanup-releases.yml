@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   cleanup-releases:
-    runs-on: ${{ inputs.use_self_hosted && 'self-hosted' || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.use_self_hosted && 'warcraft-runners' || 'ubuntu-latest' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
