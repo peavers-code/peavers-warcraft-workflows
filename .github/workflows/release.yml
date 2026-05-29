@@ -128,7 +128,7 @@ jobs:
 
           # Create clean copy excluding non-addon files
           mkdir -p "$RELEASE_DIR"
-          find . -maxdepth 1 ! -name '.' ! -name '.git' ! -name '.github' ! -name '.pkgmeta' ! -name '.gitignore' ! -name '*.md' ! -name "$RELEASE_DIR" -exec cp -r {} "$RELEASE_DIR/" \;
+          find . -maxdepth 1 ! -name '.' ! -name '.git' ! -name '.github' ! -name '.pkgmeta' ! -name '.gitignore' ! -name '*.md' ! -name 'scripts' ! -name 'local_deploy.sh' ! -name 'local_deploy.ps1' ! -name "$RELEASE_DIR" -exec cp -r {} "$RELEASE_DIR/" \;
 
           # Create zip and cleanup
           zip -r "$ZIP_NAME" "$RELEASE_DIR"
