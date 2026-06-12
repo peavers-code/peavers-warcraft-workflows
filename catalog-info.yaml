@@ -1,0 +1,11 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: workflow-templates
+  description: "Reusable GitHub Actions workflow templates for the organization"
+  annotations:
+    github.com/project-slug: peavers-warcraft/workflow-templates
+spec:
+  type: library
+  lifecycle: production
+  owner: peavers-warcraft
