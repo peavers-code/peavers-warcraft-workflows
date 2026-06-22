@@ -30,6 +30,7 @@ on:
 permissions:
   contents: write
   actions: write
+  id-token: write          # mint the GitHub App token via Vault OIDC (self-hosted)
 
 concurrency:
   group: release-${{ inputs.addon_name }}
@@ -39,11 +40,22 @@ jobs:
   release:
     runs-on: ${{ inputs.use_self_hosted && 'warcraft-runners' || 'ubuntu-latest' }}
     steps:
+      # Self-hosted only: mint a short-lived GitHub App token via Vault OIDC, so
+      # we push as the App instead of a long-lived PAT. continue-on-error + the
+      # `|| secrets.PERSONAL_ACCESS_TOKEN` fallback below mean callers that haven't
+      # granted id-token yet (or hosted runs that can't reach Vault) keep working
+      # on the PAT. Remove the fallback once every caller is migrated.
+      - name: Mint GitHub App token (self-hosted; falls back to PAT)
+        id: ghtoken
+        if: ${{ inputs.use_self_hosted }}
+        continue-on-error: true
+        uses: peavers/.github/actions/gh-app-token@main
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          token: ${{ steps.ghtoken.outputs.token || secrets.PERSONAL_ACCESS_TOKEN }}
 
       - name: Get current version and increment
         id: version
@@ -137,7 +149,7 @@ jobs:
 
       - name: Create GitHub Release
         env:
-          GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.ghtoken.outputs.token || secrets.PERSONAL_ACCESS_TOKEN }}
         run: |
           gh release create "${{ steps.tag.outputs.tag }}" \
             "${{ steps.package.outputs.zip_name }}" \
