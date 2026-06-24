@@ -38,7 +38,7 @@ concurrency:
 
 jobs:
   release:
-    runs-on: ${{ inputs.use_self_hosted && 'warcraft-runners' || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.use_self_hosted && 'peavers-code-runners' || 'ubuntu-latest' }}
     steps:
       # Mint a short-lived GitHub App token via Vault OIDC and push as the App.
       # All callers run self-hosted; the PERSONAL_ACCESS_TOKEN PAT is retired.
