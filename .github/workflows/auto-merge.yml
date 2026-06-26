@@ -21,6 +21,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  id-token: write          # mint the GitHub App token via Vault OIDC (self-hosted)
 
 jobs:
   auto-merge:
@@ -29,6 +30,11 @@ jobs:
     if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login == inputs.allowed_user
 
     steps:
+      # All callers run self-hosted; the PERSONAL_ACCESS_TOKEN PAT is retired.
+      - name: Mint GitHub App token
+        id: ghtoken
+        uses: peavers/.github/actions/gh-app-token@main
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -97,7 +103,7 @@ jobs:
 
           attempt_merge
         env:
-          GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.ghtoken.outputs.token }}
 
   notify-failure:
     runs-on: ubuntu-latest
