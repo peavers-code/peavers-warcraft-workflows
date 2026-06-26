@@ -21,10 +21,11 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  id-token: write          # mint the GitHub App token via Vault OIDC (self-hosted)
 
 jobs:
   sync:
-    runs-on: ubuntu-latest
+    runs-on: warcraft-runners   # in-cluster: reaches Vault AND has org-wide App token
     strategy:
       fail-fast: false
       matrix:
@@ -62,6 +63,12 @@ jobs:
             echo "Skipping $CURRENT (target is $TARGET)"
           fi
 
+      # PERSONAL_ACCESS_TOKEN PAT is retired; mint a short-lived org-scoped App token.
+      - name: Mint GitHub App token
+        if: steps.should-run.outputs.should_run == 'true'
+        id: ghtoken
+        uses: peavers/.github/actions/gh-app-token@main
+
       - name: Checkout workflow-templates
         if: steps.should-run.outputs.should_run == 'true'
         uses: actions/checkout@v4
@@ -74,7 +81,7 @@ jobs:
         with:
           repository: peavers-warcraft/${{ matrix.repo }}
           path: target
-          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          token: ${{ steps.ghtoken.outputs.token }}
 
       - name: Sync templates
         if: steps.should-run.outputs.should_run == 'true'
@@ -133,7 +140,7 @@ jobs:
       - name: Create Pull Request
         if: steps.should-run.outputs.should_run == 'true' && steps.sync.outputs.has_changes == 'true' && inputs.dry_run != true
         env:
-          GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          GH_TOKEN: ${{ steps.ghtoken.outputs.token }}
         run: |
           cd target
 
