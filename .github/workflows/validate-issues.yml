@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   validate:
-    runs-on: ${{ inputs.use_self_hosted && 'peavers-code-runners' || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.use_self_hosted && 'warcraft-runners' || 'ubuntu-latest' }}
     steps:
       - name: Validate issue content
         id: validate
