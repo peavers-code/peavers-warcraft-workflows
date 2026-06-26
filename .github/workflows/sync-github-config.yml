@@ -11,12 +11,10 @@ on:
         description: 'Sync to specific repo only (leave empty for all)'
         type: string
         default: ''
-  push:
-    branches:
-      - master
-    paths:
-      - '.github/ISSUE_TEMPLATE/**'
-      - '.github/FUNDING.yml'
+  # Auto-trigger disabled: the canonical Sync workflow lives in
+  # peavers-warcraft/workflow-templates (correct org for warcraft-runners +
+  # Vault App token). This duplicate fired on every push and created a second,
+  # redundant PR per repo. Left as workflow_dispatch-only pending full removal.
 
 permissions:
   contents: write
