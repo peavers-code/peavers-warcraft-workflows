@@ -11,11 +11,17 @@ on:
 
 permissions:
   contents: write
+  id-token: write          # mint the GitHub App token via Vault OIDC (self-hosted)
 
 jobs:
   cleanup-releases:
     runs-on: ${{ inputs.use_self_hosted && 'warcraft-runners' || 'ubuntu-latest' }}
     steps:
+      # All callers run self-hosted; the PERSONAL_ACCESS_TOKEN PAT is retired.
+      - name: Mint GitHub App token
+        id: ghtoken
+        uses: peavers/.github/actions/gh-app-token@main
+
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -33,7 +39,7 @@ jobs:
 
       - name: Delete old releases
         env:
-          GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.ghtoken.outputs.token }}
         run: |
           set +e  # Don't exit on error, we'll handle errors manually
 
