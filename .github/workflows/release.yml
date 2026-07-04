@@ -158,6 +158,20 @@ jobs:
       # GitHub immediately (consumed by the Peavers Updater app) and are pushed
       # to CurseForge ~7 days later by the central curseforge-publisher workflow.
 
+      # Poke the addons.peavers.io data pipeline so the static updater catalog
+      # (public/data/updater-catalog.json) rebuilds within minutes of this
+      # release instead of waiting for its 12h schedule. Best-effort: the
+      # scheduled rebuild is the fallback if the App token lacks access.
+      - name: Trigger catalog rebuild
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ steps.ghtoken.outputs.token }}
+        run: |
+          gh api repos/peavers-code/addons.peavers.io/dispatches \
+            -f event_type=addon-released \
+            -F 'client_payload[addon]=${{ inputs.addon_name }}' \
+            -F 'client_payload[version]=${{ steps.version.outputs.new_version }}'
+
   notify-failure:
     runs-on: ubuntu-latest
     needs: release
