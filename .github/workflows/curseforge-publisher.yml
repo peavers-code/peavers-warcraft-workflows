@@ -5,9 +5,10 @@ name: CurseForge Publisher
 # least `delay_days` (default 7) days old.
 #
 # Idempotency is tracked with marker assets on each release (1 byte, not
-# empty: the upload API 400s on zero-byte assets):
-#   .curseforge-uploaded  - this release was uploaded to CurseForge
-#   .curseforge-skipped   - superseded by a newer release (or no CF project ID)
+# empty: the upload API 400s on zero-byte assets; not dot-prefixed: the API
+# renames ".foo" assets to "default.foo", so matching is by endswith):
+#   curseforge-uploaded  - this release was uploaded to CurseForge
+#   curseforge-skipped   - superseded by a newer release (or no CF project ID)
 # A release is eligible when it is old enough and carries neither marker.
 # Only the NEWEST eligible release per repo is uploaded (CurseForge only ever
 # wants the latest); older eligible releases are marked skipped.
@@ -77,8 +78,8 @@ jobs:
             ELIGIBLE=$(echo "$RELEASES" | jq -c --arg cutoff "$CUTOFF" --arg repo "$REPO" '
               [ .[]
                 | select(.published_at <= $cutoff)
-                | select((.assets | index(".curseforge-uploaded")) == null)
-                | select((.assets | index(".curseforge-skipped")) == null)
+                | select(([.assets[] | select(endswith("curseforge-uploaded"))] | length) == 0)
+                | select(([.assets[] | select(endswith("curseforge-skipped"))] | length) == 0)
                 | select(.tag | test("^" + $repo + "-[0-9]+\\.[0-9]+\\.[0-9]+$"))
                 | select([.assets[] | select(endswith(".zip"))] | length > 0) ]
               | sort_by(.published_at) | reverse')
@@ -93,10 +94,10 @@ jobs:
             MATRIX=$(echo "$MATRIX" | jq -c --arg repo "$ORG/$REPO" --arg tag "$NEWEST_TAG" --arg zip "$ZIP_NAME" \
               '. += [{repo: $repo, tag: $tag, zip: $zip}]')
 
-            echo skipped > .curseforge-skipped
+            echo skipped > curseforge-skipped
             for TAG in $(echo "$ELIGIBLE" | jq -r '.[1:][].tag'); do
               echo "  superseded: $TAG"
-              gh release upload "$TAG" .curseforge-skipped --repo "$ORG/$REPO" --clobber
+              gh release upload "$TAG" curseforge-skipped --repo "$ORG/$REPO" --clobber
             done
           done
 
@@ -168,8 +169,8 @@ jobs:
           # No CurseForge project -> mark skipped so it is never retried.
           if ! grep -q 'X-Curse-Project-ID:' "$TOC_FILE"; then
             echo "No X-Curse-Project-ID in $TOC_FILE - marking release skipped"
-            echo skipped > .curseforge-skipped
-            gh release upload "${{ matrix.release.tag }}" .curseforge-skipped \
+            echo skipped > curseforge-skipped
+            gh release upload "${{ matrix.release.tag }}" curseforge-skipped \
               --repo "${{ matrix.release.repo }}" --clobber
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
@@ -204,8 +205,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.ghtoken.outputs.token }}
         run: |
-          echo uploaded > .curseforge-uploaded
-          gh release upload "${{ matrix.release.tag }}" .curseforge-uploaded \
+          echo uploaded > curseforge-uploaded
+          gh release upload "${{ matrix.release.tag }}" curseforge-uploaded \
             --repo "${{ matrix.release.repo }}" --clobber
 
   notify-failure:
