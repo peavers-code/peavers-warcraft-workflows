@@ -41,6 +41,8 @@ jobs:
       - name: Mint GitHub App token (Vault OIDC)
         id: ghtoken
         uses: peavers/.github/actions/gh-app-token@main
+        with:
+          owner: peavers-warcraft   # releases live there, not in this repo's org
 
       - name: Find eligible releases
         id: find
@@ -115,6 +117,8 @@ jobs:
       - name: Mint GitHub App token (Vault OIDC)
         id: ghtoken
         uses: peavers/.github/actions/gh-app-token@main
+        with:
+          owner: peavers-warcraft   # releases live there, not in this repo's org
 
       - name: Fetch CI secrets from Vault
         uses: hashicorp/vault-action@v3
