@@ -58,9 +58,24 @@ runs:
       env:
         CF_API_KEY: ${{ inputs.api_key }}
       run: |
-        # Fetch available game versions from CurseForge
-        VERSIONS_JSON=$(curl -s -H "X-Api-Token: $CF_API_KEY" \
-          "https://wow.curseforge.com/api/game/versions")
+        # Fetch available game versions from CurseForge. The endpoint
+        # intermittently returns non-JSON errors (rate limiting under
+        # parallel uploads), so validate and retry with backoff.
+        VERSIONS_JSON=""
+        for attempt in 1 2 3 4 5; do
+          RESPONSE=$(curl -sS --max-time 30 -H "X-Api-Token: $CF_API_KEY" \
+            "https://wow.curseforge.com/api/game/versions" || echo "")
+          if echo "$RESPONSE" | jq -e 'type == "array"' >/dev/null 2>&1; then
+            VERSIONS_JSON="$RESPONSE"
+            break
+          fi
+          echo "Attempt $attempt: game/versions returned non-JSON, retrying..."
+          sleep $((attempt * 10))
+        done
+        if [ -z "$VERSIONS_JSON" ]; then
+          echo "::error::CurseForge game/versions still non-JSON after 5 attempts"
+          exit 1
+        fi
 
         # Parse interface versions and find matching CF version IDs
         INTERFACE="${{ steps.toc.outputs.interface }}"
