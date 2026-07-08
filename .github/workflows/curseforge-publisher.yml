@@ -4,7 +4,8 @@ name: CurseForge Publisher
 # by the Peavers Updater app) and are uploaded to CurseForge once they are at
 # least `delay_days` (default 7) days old.
 #
-# Idempotency is tracked with zero-byte marker assets on each release:
+# Idempotency is tracked with marker assets on each release (1 byte, not
+# empty: the upload API 400s on zero-byte assets):
 #   .curseforge-uploaded  - this release was uploaded to CurseForge
 #   .curseforge-skipped   - superseded by a newer release (or no CF project ID)
 # A release is eligible when it is old enough and carries neither marker.
@@ -90,7 +91,7 @@ jobs:
             MATRIX=$(echo "$MATRIX" | jq -c --arg repo "$ORG/$REPO" --arg tag "$NEWEST_TAG" --arg zip "$ZIP_NAME" \
               '. += [{repo: $repo, tag: $tag, zip: $zip}]')
 
-            touch .curseforge-skipped
+            echo skipped > .curseforge-skipped
             for TAG in $(echo "$ELIGIBLE" | jq -r '.[1:][].tag'); do
               echo "  superseded: $TAG"
               gh release upload "$TAG" .curseforge-skipped --repo "$ORG/$REPO" --clobber
@@ -163,7 +164,7 @@ jobs:
           # No CurseForge project -> mark skipped so it is never retried.
           if ! grep -q 'X-Curse-Project-ID:' "$TOC_FILE"; then
             echo "No X-Curse-Project-ID in $TOC_FILE - marking release skipped"
-            touch .curseforge-skipped
+            echo skipped > .curseforge-skipped
             gh release upload "${{ matrix.release.tag }}" .curseforge-skipped \
               --repo "${{ matrix.release.repo }}" --clobber
             echo "skip=true" >> "$GITHUB_OUTPUT"
@@ -199,7 +200,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.ghtoken.outputs.token }}
         run: |
-          touch .curseforge-uploaded
+          echo uploaded > .curseforge-uploaded
           gh release upload "${{ matrix.release.tag }}" .curseforge-uploaded \
             --repo "${{ matrix.release.repo }}" --clobber
 
