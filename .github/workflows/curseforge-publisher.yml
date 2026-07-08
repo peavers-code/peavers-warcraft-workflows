@@ -225,7 +225,7 @@ jobs:
           tlsSkipVerify: true
           exportToken: false
           secrets: |
-            kv/data/cluster/_shared/terraform-github discord_workflow_webhook_url | DISCORD_WEBHOOK_URL
+            kv/data/cluster/_shared/discord discord_workflow_webhook_url | DISCORD_WEBHOOK_URL
 
       - name: Notify Discord
         uses: peavers-warcraft/workflow-templates/.github/actions/notify-discord@master
