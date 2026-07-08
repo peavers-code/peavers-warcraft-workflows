@@ -32,7 +32,7 @@ concurrency:
 
 jobs:
   discover:
-    runs-on: warcraft-runners
+    runs-on: peavers-code-runners
     outputs:
       matrix: ${{ steps.find.outputs.matrix }}
       has_work: ${{ steps.find.outputs.has_work }}
@@ -104,7 +104,7 @@ jobs:
   publish:
     needs: discover
     if: needs.discover.outputs.has_work == 'true'
-    runs-on: warcraft-runners
+    runs-on: peavers-code-runners
     strategy:
       max-parallel: 2
       fail-fast: false

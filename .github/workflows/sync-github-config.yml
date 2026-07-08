@@ -23,7 +23,7 @@ permissions:
 
 jobs:
   sync:
-    runs-on: warcraft-runners   # in-cluster: reaches Vault AND has org-wide App token
+    runs-on: peavers-code-runners   # in-cluster: reaches Vault AND has org-wide App token
     strategy:
       fail-fast: false
       matrix:
