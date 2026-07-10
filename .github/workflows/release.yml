@@ -161,11 +161,22 @@ jobs:
       # Poke the addons.peavers.io data pipeline so the static updater catalog
       # (public/data/updater-catalog.json) rebuilds within minutes of this
       # release instead of waiting for its 12h schedule. Best-effort: the
-      # scheduled rebuild is the fallback if the App token lacks access.
+      # scheduled rebuild is the fallback if the poke fails.
+      #
+      # The dispatch target lives in peavers-code, but the release token above
+      # is scoped to the calling repo's org (peavers-warcraft) — using it here
+      # 404s. Mint a second token against the App's peavers-code installation.
+      - name: Mint peavers-code token for catalog poke (Vault OIDC)
+        id: ghtoken-code
+        continue-on-error: true
+        uses: peavers/.github/actions/gh-app-token@main
+        with:
+          owner: peavers-code
+
       - name: Trigger catalog rebuild
         continue-on-error: true
         env:
-          GITHUB_TOKEN: ${{ steps.ghtoken.outputs.token }}
+          GITHUB_TOKEN: ${{ steps.ghtoken-code.outputs.token }}
         run: |
           gh api repos/peavers-code/addons.peavers.io/dispatches \
             -f event_type=addon-released \
