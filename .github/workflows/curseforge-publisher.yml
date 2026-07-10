@@ -1,8 +1,10 @@
 name: CurseForge Publisher
 
-# Central delayed publisher: addon releases go live on GitHub instantly (consumed
+# Central publisher: addon releases go live on GitHub instantly (consumed
 # by the Peavers Updater app) and are uploaded to CurseForge once they are at
-# least `delay_days` (default 7) days old.
+# least `delay_days` days old. The delay is currently 0 (publish immediately)
+# until the Peavers Updater rollout; restore the delayed strategy by setting
+# the defaults below back to '7'.
 #
 # Idempotency is tracked with marker assets on each release (1 byte, not
 # empty: the upload API 400s on zero-byte assets; not dot-prefixed: the API
@@ -22,7 +24,7 @@ on:
         description: 'Minimum age (days) before a release is uploaded to CurseForge'
         required: false
         type: string
-        default: '7'
+        default: '0'
 
 permissions:
   contents: write
@@ -49,7 +51,7 @@ jobs:
         id: find
         env:
           GITHUB_TOKEN: ${{ steps.ghtoken.outputs.token }}
-          DELAY_DAYS: ${{ inputs.delay_days || '7' }}
+          DELAY_DAYS: ${{ inputs.delay_days || '0' }}
         run: |
           set -euo pipefail
           ORG="peavers-warcraft"
