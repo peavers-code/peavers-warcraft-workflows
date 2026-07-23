@@ -26,6 +26,11 @@ on:
         required: false
         type: boolean
         default: false
+      publish_curseforge:
+        description: 'Upload the packaged addon to CurseForge'
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -183,7 +188,13 @@ jobs:
       # never blocks the GitHub release or the catalog poke above.
       # CI secrets live in Vault (single source of truth, no GitHub secret-visibility
       # footguns). Requires the in-cluster runner + id-token: write (both already present).
+      #
+      # Skipped for addons distributed exclusively through addons.peavers.io
+      # (publish_curseforge: false). Everything above still runs — the GitHub
+      # Release and the catalog poke are what the Updater actually consumes, so
+      # those addons release exactly as before, just without the CurseForge leg.
       - name: Fetch CI secrets from Vault
+        if: inputs.publish_curseforge
         uses: hashicorp/vault-action@v3
         with:
           url: https://vault.vault.svc.cluster.local:8200
@@ -197,6 +208,7 @@ jobs:
             kv/data/cluster/_shared/curseforge api_key | CF_API_KEY
 
       - name: Upload to CurseForge
+        if: inputs.publish_curseforge
         uses: peavers-code/peavers-warcraft-workflows/.github/actions/upload-curseforge@master
         with:
           api_key: ${{ env.CF_API_KEY }}
