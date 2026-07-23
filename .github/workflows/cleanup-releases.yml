@@ -8,6 +8,21 @@ on:
         required: false
         type: boolean
         default: true
+      bank_downloads:
+        description: 'Bank each deleted release download count into .peavers-downloads.json'
+        required: false
+        type: boolean
+        default: false
+      git_user_name:
+        description: 'Git user name for the banking commit'
+        required: false
+        type: string
+        default: 'github-actions[bot]'
+      git_user_email:
+        description: 'Git user email for the banking commit'
+        required: false
+        type: string
+        default: 'github-actions[bot]@users.noreply.github.com'
 
 permissions:
   contents: write
@@ -22,8 +37,11 @@ jobs:
         id: ghtoken
         uses: peavers/.github/actions/gh-app-token@main
 
+      # Token on the checkout so the banking step below can push its commit.
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          token: ${{ steps.ghtoken.outputs.token }}
 
       - name: Install GitHub CLI
         run: |
@@ -38,6 +56,7 @@ jobs:
           fi
 
       - name: Delete old releases
+        id: cleanup
         env:
           GITHUB_TOKEN: ${{ steps.ghtoken.outputs.token }}
         run: |
@@ -45,10 +64,13 @@ jobs:
 
           echo "Fetching all releases..."
 
-          # Get all releases (id + tag) sorted by creation date (newest first)
-          RELEASES=$(gh api repos/${{ github.repository }}/releases --paginate --jq 'sort_by(.created_at) | reverse | .[] | "\(.id)|\(.tag_name)"')
+          # Get all releases (id + tag + asset download count) sorted by creation
+          # date (newest first). The download count is banked below before the
+          # release is deleted — once it's gone, GitHub has no record of it and
+          # the addon's total would ratchet backwards.
+          RELEASES=$(gh api repos/${{ github.repository }}/releases --paginate --jq 'sort_by(.created_at) | reverse | .[] | "\(.id)|\(.tag_name)|\([.assets[].download_count] | add // 0)"')
 
-          # Convert to array (each element is "id|tag_name"; tag names have no spaces)
+          # Convert to array (each element is "id|tag_name|downloads"; tag names have no spaces)
           RELEASE_ARRAY=($RELEASES)
 
           # Count total releases
@@ -57,21 +79,22 @@ jobs:
 
           if [ $TOTAL_RELEASES -le 1 ]; then
             echo "Only one or no releases found. Nothing to delete."
+            echo "banked=0" >> $GITHUB_OUTPUT
             exit 0
           fi
 
           # Keep the first one (most recent), delete the rest
-          echo "Keeping the most recent release (ID: ${RELEASE_ARRAY[0]%%|*}, tag: ${RELEASE_ARRAY[0]#*|})"
+          IFS='|' read -r KEEP_ID KEEP_TAG KEEP_DOWNLOADS <<< "${RELEASE_ARRAY[0]}"
+          echo "Keeping the most recent release (ID: $KEEP_ID, tag: $KEEP_TAG, downloads: $KEEP_DOWNLOADS)"
           echo "Will delete $((TOTAL_RELEASES - 1)) releases (and their tags)..."
 
           DELETED=0
           TAGS_DELETED=0
           FAILED=0
+          BANKED=0
 
           for ((i=1; i<$TOTAL_RELEASES; i++)); do
-            ENTRY=${RELEASE_ARRAY[$i]}
-            RELEASE_ID=${ENTRY%%|*}
-            TAG_NAME=${ENTRY#*|}
+            IFS='|' read -r RELEASE_ID TAG_NAME RELEASE_DOWNLOADS <<< "${RELEASE_ARRAY[$i]}"
 
             # Show progress every 100 deletions
             if [ $((i % 100)) -eq 0 ]; then
@@ -84,6 +107,8 @@ jobs:
 
             if [ $EXIT_CODE -eq 0 ]; then
               ((DELETED++))
+              # Bank the downloads this release accrued before it vanishes.
+              BANKED=$((BANKED + RELEASE_DOWNLOADS))
               # Deleting a release leaves its tag behind, so delete the tag too — otherwise
               # tags accumulate indefinitely (thousands of tag-only refs over time).
               if [ -n "$TAG_NAME" ] && [ "$TAG_NAME" != "null" ]; then
@@ -109,13 +134,53 @@ jobs:
           echo "Kept: 1 release (+ its tag)"
           echo "Deleted: $DELETED releases, $TAGS_DELETED tags"
           echo "Failed: $FAILED releases"
+          echo "Downloads banked from deleted releases: $BANKED"
           echo "============================================="
+
+          echo "banked=$BANKED" >> $GITHUB_OUTPUT
 
           # Exit with error if too many failures
           if [ $FAILED -gt 100 ]; then
             echo "Too many failures, exiting with error"
             exit 1
           fi
+
+      # Only addons whose download total is sourced from GitHub rather than
+      # CurseForge need this ledger (see the `exclusive` flag in .peavers.yml).
+      # The site adds this figure to the counts of the releases still standing,
+      # so the total keeps climbing across nightly cleanups instead of resetting.
+      - name: Bank download counts
+        if: inputs.bank_downloads && steps.cleanup.outputs.banked != '0'
+        env:
+          GITHUB_TOKEN: ${{ steps.ghtoken.outputs.token }}
+          BANKED: ${{ steps.cleanup.outputs.banked }}
+        run: |
+          set -e
+          LEDGER=".peavers-downloads.json"
+
+          PREVIOUS=0
+          if [ -f "$LEDGER" ]; then
+            PREVIOUS=$(jq -r '.archived // 0' "$LEDGER")
+          fi
+          TOTAL=$((PREVIOUS + BANKED))
+
+          jq -n --argjson archived "$TOTAL" \
+            '{archived: $archived, note: "Downloads accrued by deleted GitHub releases. Maintained by cleanup-releases.yml; do not edit by hand."}' \
+            > "$LEDGER"
+
+          git config user.name "${{ inputs.git_user_name }}"
+          git config user.email "${{ inputs.git_user_email }}"
+          git add "$LEDGER"
+          git commit -m "chore: bank $BANKED downloads from deleted releases (total $TOTAL) [skip ci]"
+
+          # The scheduled data-update jobs push constantly; rebase rather than fail.
+          for attempt in 1 2 3; do
+            git pull --rebase origin ${{ github.ref_name }} && git push && exit 0
+            echo "Push attempt $attempt failed, retrying..."
+            sleep 5
+          done
+          echo "::error::Could not push the download ledger after 3 attempts"
+          exit 1
 
   notify-failure:
     runs-on: ubuntu-latest
