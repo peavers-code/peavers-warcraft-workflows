@@ -25,7 +25,11 @@ permissions:
 
 jobs:
   auto-merge:
-    runs-on: ${{ inputs.use_self_hosted && 'warcraft-runners' || 'ubuntu-latest' }}
+    # RUNNER_LABEL is read from the CALLING repository - GitHub resolves a
+    # reusable workflow's vars context against the caller - so one variable per
+    # addon repo moves it off the cluster with no commit anywhere. Unset falls
+    # through to use_self_hosted, which is today's behaviour.
+    runs-on: ${{ vars.RUNNER_LABEL || (inputs.use_self_hosted && 'warcraft-runners' || 'ubuntu-latest') }}
     # Security: Only run for PRs from the same repo (not forks) AND from allowed user
     if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login == inputs.allowed_user
 
