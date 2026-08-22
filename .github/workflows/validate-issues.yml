@@ -14,7 +14,11 @@ permissions:
 
 jobs:
   validate:
-    runs-on: ${{ inputs.use_self_hosted && 'warcraft-runners' || 'ubuntu-latest' }}
+    # RUNNER_LABEL is read from the CALLING repository - GitHub resolves a
+    # reusable workflow's vars context against the caller - so one variable per
+    # addon repo moves it off the cluster with no commit anywhere. Unset falls
+    # through to use_self_hosted, which is today's behaviour.
+    runs-on: ${{ vars.RUNNER_LABEL || (inputs.use_self_hosted && 'warcraft-runners' || 'ubuntu-latest') }}
     steps:
       - name: Validate issue content
         id: validate
