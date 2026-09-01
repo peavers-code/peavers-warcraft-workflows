@@ -111,6 +111,11 @@ on:
     branches: [master]
   workflow_dispatch:
 
+# Required. See the note below.
+permissions:
+  contents: write
+  id-token: write
+
 jobs:
   perf:
     uses: peavers-code/peavers-warcraft-workflows/.github/workflows/perf.yml@master
@@ -119,6 +124,14 @@ jobs:
       use_self_hosted: true
     secrets: inherit
 ```
+
+**Do not omit the `permissions:` block.** A reusable workflow cannot be granted
+more than its caller has, and this one needs `contents: write` to publish the
+measured table back into the README and `id-token: write` to mint the App token
+via Vault OIDC. Leave it out and the run fails at *startup*: no job is created,
+there is no log to open and no annotation on the pull request — just a bare
+`startup_failure`, which looks identical to the reusable workflow not existing.
+All three addons hit this on their first run.
 
 Then add the badge and the markers to the README:
 
