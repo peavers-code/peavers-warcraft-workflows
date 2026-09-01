@@ -202,6 +202,17 @@ function enforce(stat, scenarios) {
       check('Widget calls per second while idle', worst, budget.maxIdleCallsPerSecond, '',
         worst <= budget.maxIdleCallsPerSecond);
     }
+    // Per-frame is the wrong unit for a timer-driven addon: it does no per-frame
+    // work at all, and the honest question is what a tick costs and how often
+    // one happens. Scenarios opt in by reporting callsPerSecond.
+    if (budget.maxCallsPerSecond != null) {
+      const reported = scenarios.filter((s) => s.callsPerSecond != null);
+      if (reported.length > 0) {
+        const worst = Math.max(...reported.map((s) => s.callsPerSecond));
+        check('Widget calls per second', +worst.toFixed(2), budget.maxCallsPerSecond, '',
+          worst <= budget.maxCallsPerSecond + 1e-9);
+      }
+    }
   }
 
   return { checks, failures };
@@ -227,14 +238,22 @@ function markdown(stat, scenarios, checks, ok) {
   lines.push('');
 
   if (scenarios.length > 0) {
+    const anyPerSecond = scenarios.some((s) => s.callsPerSecond != null);
     lines.push('Scenarios driven against the real addon source, outside the game:');
     lines.push('');
-    lines.push('| Scenario | Widget calls/frame | Notes |');
-    lines.push('|---|---:|---|');
+    lines.push(anyPerSecond
+      ? '| Scenario | Calls/frame | Calls/sec | Notes |'
+      : '| Scenario | Calls/frame | Notes |');
+    lines.push(anyPerSecond ? '|---|---:|---:|---|' : '|---|---:|---|');
     for (const s of scenarios) {
       const notes = s.notes ?? '';
       const cpf = s.callsPerFrame != null ? (+s.callsPerFrame).toFixed(2) : '-';
-      lines.push(`| ${s.name} | ${cpf} | ${notes} |`);
+      if (anyPerSecond) {
+        const cps = s.callsPerSecond != null ? (+s.callsPerSecond).toFixed(1) : '-';
+        lines.push(`| ${s.name} | ${cpf} | ${cps} | ${notes} |`);
+      } else {
+        lines.push(`| ${s.name} | ${cpf} | ${notes} |`);
+      }
     }
     lines.push('');
   }
@@ -251,9 +270,16 @@ function badge(stat, scenarios, ok) {
   if (!ok) {
     message = 'over budget';
   } else if (scenarios.length > 0) {
-    const worst = Math.max(...scenarios.map((s) => s.callsPerFrame ?? 0));
-    const rounded = Math.round(worst * 100) / 100;
-    message = `${rounded} call${rounded === 1 ? '' : 's'}/frame`;
+    const worstFrame = Math.max(...scenarios.map((s) => s.callsPerFrame ?? 0));
+    if (worstFrame > 0) {
+      const rounded = Math.round(worstFrame * 100) / 100;
+      message = `${rounded} call${rounded === 1 ? '' : 's'}/frame`;
+    } else {
+      const perSecond = scenarios.filter((s) => s.callsPerSecond != null);
+      message = perSecond.length > 0
+        ? `${Math.round(Math.max(...perSecond.map((s) => s.callsPerSecond)) * 10) / 10} calls/sec`
+        : 'no per-frame work';
+    }
   } else {
     message = `${stat.packagedKB} KB`;
   }

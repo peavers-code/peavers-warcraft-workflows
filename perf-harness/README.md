@@ -24,6 +24,7 @@ README.md            containing <!-- perf:begin --> and <!-- perf:end -->
 ```json
 {
   "maxWidgetCallsPerFrame": 1,
+  "maxCallsPerSecond": 40,
   "maxIdleCallsPerSecond": 0,
   "maxPackagedKB": 100,
   "allowBundledLibs": false
@@ -33,6 +34,12 @@ README.md            containing <!-- perf:begin --> and <!-- perf:end -->
 Every key is optional; omitting one drops that check. Set numbers you actually
 meet today, not aspirations — a budget that already fails teaches the team to
 ignore a red build, which costs more than it buys.
+
+`maxCallsPerSecond` is for timer-driven addons. Per-frame is the wrong unit for
+something that runs on a `C_Timer` ticker: it does no per-frame work at all, and
+the honest question is what a tick costs and how often one happens. A scenario
+opts in by reporting `callsPerSecond` alongside (or instead of) `callsPerFrame`,
+and the badge falls back to a per-second headline when nothing runs per frame.
 
 ### `perf/cases/*.lua`
 
@@ -73,6 +80,7 @@ silently. That has already caused one false green.
 | Packaged size | Walks the repo, skipping what `.pkgmeta` ignores |
 | Bundled libraries | A top-level `Libs`/`libs` directory |
 | Widget calls per frame | Counted for real while a case drives the addon's own handler |
+| Widget calls per second | For timer-driven addons: what a tick costs, times how often it fires |
 | Idle calls per second | Same, with nothing happening — should be zero, since WoW does not tick hidden frames |
 
 `callsPerFrame` is the honest total of everything the addon asked the client to
