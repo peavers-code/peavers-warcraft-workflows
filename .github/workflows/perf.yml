@@ -1,0 +1,135 @@
+name: Ultra Performance
+
+# Measures an addon against the budget it declares in perf/budget.json, fails
+# the build if it regressed, and publishes the numbers it measured back into the
+# README so the claim on the tin is never older than the last push.
+#
+# The addon supplies:
+#   perf/budget.json   - the limits it holds itself to
+#   perf/cases/*.lua   - optional behavioural scenarios (see perf-harness/)
+#   README.md          - with <!-- perf:begin --> / <!-- perf:end --> markers
+#
+# Everything else lives in this repo, so a change to how measurement works lands
+# in one place rather than in every addon.
+
+on:
+  workflow_call:
+    inputs:
+      addon_name:
+        description: 'Addon name, used in the job summary'
+        required: true
+        type: string
+      update_readme:
+        description: 'Write the measured table back into README.md and commit it'
+        required: false
+        type: boolean
+        default: true
+      git_user_name:
+        description: 'Git user name for the results commit'
+        required: false
+        type: string
+        default: 'github-actions[bot]'
+      git_user_email:
+        description: 'Git user email for the results commit'
+        required: false
+        type: string
+        default: 'github-actions[bot]@users.noreply.github.com'
+      use_self_hosted:
+        description: 'Use self-hosted runner instead of GitHub-hosted'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: perf-${{ inputs.addon_name }}
+  cancel-in-progress: true
+
+jobs:
+  perf:
+    runs-on: ${{ vars.RUNNER_LABEL || (inputs.use_self_hosted && 'warcraft-runners' || 'ubuntu-latest') }}
+    steps:
+      # Only needed when the results are committed back. A fork PR gets a
+      # read-only token and the push step is skipped, so the measurement still
+      # runs and still fails on a regression - it just does not rewrite anything.
+      - name: Mint GitHub App token (Vault OIDC)
+        id: ghtoken
+        if: ${{ inputs.update_readme && github.event_name == 'push' }}
+        continue-on-error: true
+        uses: peavers/.github/actions/gh-app-token@main
+
+      - name: Checkout addon
+        uses: actions/checkout@v4
+        with:
+          path: addon
+          token: ${{ steps.ghtoken.outputs.token || github.token }}
+
+      - name: Checkout harness
+        uses: actions/checkout@v4
+        with:
+          repository: peavers-code/peavers-warcraft-workflows
+          ref: master
+          path: harness
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install harness dependencies
+        working-directory: harness/perf-harness
+        run: npm install --omit=dev --no-audit --no-fund
+
+      # Fails the job when a measured number is outside the declared budget.
+      # That failure is the whole point: without it the badge means nothing.
+      - name: Measure
+        id: measure
+        working-directory: addon
+        run: |
+          mkdir -p .github/badges
+          node ../harness/perf-harness/runner.mjs \
+            --addon . \
+            --json perf-report.json \
+            --badge .github/badges/perf.json \
+            --readme README.md \
+            | tee perf-summary.txt
+
+      - name: Job summary
+        if: always()
+        working-directory: addon
+        run: |
+          {
+            echo "## Ultra Performance — ${{ inputs.addon_name }}"
+            echo
+            if [ -f perf-summary.txt ]; then cat perf-summary.txt; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-report-${{ inputs.addon_name }}
+          path: |
+            addon/perf-report.json
+            addon/perf-summary.txt
+          if-no-files-found: ignore
+
+      # Only on push, and only when something actually changed, so a run that
+      # measures identical numbers does not add an empty commit to every push.
+      - name: Publish results
+        if: ${{ inputs.update_readme && github.event_name == 'push' && steps.ghtoken.outputs.token }}
+        working-directory: addon
+        run: |
+          rm -f perf-report.json perf-summary.txt
+          if git diff --quiet -- README.md .github/badges/perf.json; then
+            echo "Measured numbers unchanged; nothing to publish."
+            exit 0
+          fi
+          git config user.name "${{ inputs.git_user_name }}"
+          git config user.email "${{ inputs.git_user_email }}"
+          git add README.md .github/badges/perf.json
+          git commit -m "chore: publish measured performance [skip ci]"
+          git pull --rebase origin ${{ github.ref_name }}
+          git push origin HEAD:${{ github.ref_name }}

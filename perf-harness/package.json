@@ -1,0 +1,13 @@
+{
+  "name": "peavers-perf-harness",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Ultra Performance harness: measures a Peavers addon against its declared budget.",
+  "bin": {
+    "peavers-perf": "./runner.mjs"
+  },
+  "dependencies": {
+    "fengari": "0.1.4"
+  }
+}
