@@ -77,6 +77,19 @@ end
 
 --------------------------------------------------------------------------------
 -- Frames
+--
+-- What counts as a call, and what does not:
+--
+--   counted      every mutation (Set*), plus the geometry reads that force the
+--                client to resolve a layout (GetWidth, GetHeight)
+--   not counted  trivial state reads (IsShown, GetValue, GetAlpha). They are
+--                close to free, and - the practical reason - the harness itself
+--                calls IsShown to decide whether WoW would have ticked a frame
+--                at all. Counting those would charge the addon for the
+--                measurement.
+--
+-- The rule matters: SetMinMaxValues was missed on the first pass, which
+-- undercounted a bar refresh by a third.
 --------------------------------------------------------------------------------
 
 local Frame = {}
@@ -98,12 +111,12 @@ function Frame:IsShown() return self._shown end
 function Frame:SetShown(v) Count("SetShown") self._shown = v and true or false end
 function Frame:CreateTexture() return Stubs.NewTexture() end
 function Frame:CreateFontString() return Stubs.NewTexture() end
-function Frame:SetScript(script, fn) self._scripts[script] = fn end
+function Frame:SetScript(script, fn) Count("SetScript") self._scripts[script] = fn end
 function Frame:GetScript(script) return self._scripts[script] end
-function Frame:HookScript(script, fn) self._scripts[script] = fn end
+function Frame:HookScript(script, fn) Count("HookScript") self._scripts[script] = fn end
 function Frame:SetValue(v) Count("SetValue") self._value = v end
 function Frame:GetValue() return self._value end
-function Frame:SetMinMaxValues(lo, hi) self._min, self._max = lo, hi end
+function Frame:SetMinMaxValues(lo, hi) Count("SetMinMaxValues") self._min, self._max = lo, hi end
 function Frame:GetMinMaxValues() return self._min or 0, self._max or 1 end
 function Frame:SetWidth(w) Count("SetWidth") self._width = w end
 function Frame:SetHeight(h) Count("SetHeight") self._height = h end
