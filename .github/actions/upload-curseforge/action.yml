@@ -47,8 +47,19 @@ runs:
         echo "project_id=$PROJECT_ID" >> $GITHUB_OUTPUT
         echo "Found CurseForge project ID: $PROJECT_ID"
 
-        # Extract interface versions (can be comma-separated)
-        INTERFACE=$(grep -oP '(?<=## Interface:\s)[\d, ]+' "$TOC_FILE" | tr -d ' ')
+        # Collect interface versions from every top-level TOC beside the
+        # primary one, so one multi-value TOC and per-flavour TOCs both work.
+        TOC_DIR=$(dirname "$TOC_FILE")
+        mapfile -t TOCS < <(
+          { echo "$TOC_FILE"; find "$TOC_DIR" -maxdepth 1 -type f -name '*.toc' | sed 's|^\./||' | sort; } \
+            | awk '!seen[$0]++'
+        )
+        echo "Reading interface versions from: ${TOCS[*]}"
+        INTERFACE=$(bash "${{ github.action_path }}/collect-interfaces.sh" "${TOCS[@]}")
+        if [ -z "$INTERFACE" ]; then
+          echo "::error::No ## Interface values found in ${TOCS[*]}"
+          exit 1
+        fi
         echo "interface=$INTERFACE" >> $GITHUB_OUTPUT
         echo "Found interface version(s): $INTERFACE"
 
@@ -77,38 +88,17 @@ runs:
           exit 1
         fi
 
-        # Parse interface versions and find matching CF version IDs
+        # Map interface numbers to CurseForge version IDs by exact dotted name
+        # (120001 -> "12.0.1", 11509 -> "1.15.9"). An unlisted patch falls
+        # back to the highest listed patch of the same major.minor with a
+        # warning; if nothing matches at all the step fails rather than
+        # tagging the file as some other game version. Logic and tests live
+        # in match-game-versions.sh and tests/.
         INTERFACE="${{ steps.toc.outputs.interface }}"
-        VERSION_IDS=""
+        VERSIONS_FILE="$RUNNER_TEMP/curseforge-game-versions.json"
+        printf '%s' "$VERSIONS_JSON" > "$VERSIONS_FILE"
 
-        # Split by comma and process each interface version
-        IFS=',' read -ra IFACE_ARRAY <<< "$INTERFACE"
-        for iface in "${IFACE_ARRAY[@]}"; do
-          iface=$(echo "$iface" | tr -d ' ')
-
-          # Find matching version ID from CF API response
-          # The API returns objects with gameVersionTypeID, id, name, slug
-          VERSION_ID=$(echo "$VERSIONS_JSON" | jq -r --arg iface "$iface" \
-            '.[] | select(.name | contains($iface)) | .id' | head -1)
-
-          if [ -n "$VERSION_ID" ] && [ "$VERSION_ID" != "null" ]; then
-            if [ -n "$VERSION_IDS" ]; then
-              VERSION_IDS="$VERSION_IDS,$VERSION_ID"
-            else
-              VERSION_IDS="$VERSION_ID"
-            fi
-          fi
-        done
-
-        # If no versions found, try to get retail version
-        if [ -z "$VERSION_IDS" ]; then
-          # Get the latest retail version as fallback
-          VERSION_ID=$(echo "$VERSIONS_JSON" | jq -r \
-            '[.[] | select(.gameVersionTypeID == 517)] | sort_by(.id) | last | .id')
-          if [ -n "$VERSION_ID" ] && [ "$VERSION_ID" != "null" ]; then
-            VERSION_IDS="$VERSION_ID"
-          fi
-        fi
+        VERSION_IDS=$(bash "${{ github.action_path }}/match-game-versions.sh" "$INTERFACE" "$VERSIONS_FILE")
 
         if [ -z "$VERSION_IDS" ]; then
           echo "::error::Could not determine CurseForge game version IDs"
