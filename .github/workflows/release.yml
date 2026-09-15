@@ -77,15 +77,37 @@ jobs:
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
           echo "New version: $NEW_VERSION"
 
-      - name: Update TOC version
+      # toc_file stays the primary TOC (version source, CurseForge project id).
+      # Any other top-level *.toc beside it - per-flavour TOCs such as
+      # Addon_Vanilla.toc - is bumped, committed and packaged alongside it.
+      # The list is written one path per line so later steps can mapfile it.
+      - name: Find top-level TOC files
+        env:
+          TOC_FILE: ${{ inputs.toc_file }}
         run: |
-          sed -i "s/^## Version: .*$/## Version: ${{ steps.version.outputs.new_version }}/" ${{ inputs.toc_file }}
+          TOC_DIR=$(dirname "$TOC_FILE")
+          {
+            echo "$TOC_FILE"
+            find "$TOC_DIR" -maxdepth 1 -type f -name '*.toc' | sed 's|^\./||' | sort
+          } | awk '!seen[$0]++' > "$RUNNER_TEMP/toc-files.txt"
+          echo "TOC files:"
+          cat "$RUNNER_TEMP/toc-files.txt"
+
+      - name: Update TOC version
+        env:
+          NEW_VERSION: ${{ steps.version.outputs.new_version }}
+        run: |
+          mapfile -t TOCS < "$RUNNER_TEMP/toc-files.txt"
+          for toc in "${TOCS[@]}"; do
+            sed -i "s/^## Version: .*$/## Version: ${NEW_VERSION}/" "$toc"
+          done
 
       - name: Commit version bump
         run: |
+          mapfile -t TOCS < "$RUNNER_TEMP/toc-files.txt"
           git config user.name "${{ inputs.git_user_name }}"
           git config user.email "${{ inputs.git_user_email }}"
-          git add ${{ inputs.toc_file }}
+          git add -- "${TOCS[@]}"
           git commit -m "chore: bump version to ${{ steps.version.outputs.new_version }} [skip ci]"
           git pull --rebase origin master
           git push
@@ -110,7 +132,6 @@ jobs:
           ADDON_NAME: ${{ inputs.addon_name }}
           NEW_VERSION: ${{ steps.version.outputs.new_version }}
           CHANGELOG_JSON: ${{ steps.changelog.outputs.changelog_json }}
-          TOC_FILE: ${{ inputs.toc_file }}
         run: |
           # Build Lua entries from JSON
           LUA_ENTRIES=""
@@ -131,20 +152,51 @@ jobs:
             echo "}"
           } > Changelog.lua
 
-          # Ensure Changelog.lua is in the TOC file
-          if ! grep -q "^Changelog.lua" "$TOC_FILE"; then
-            echo "Changelog.lua" >> "$TOC_FILE"
-          fi
+          # Ensure Changelog.lua is in every top-level TOC file
+          mapfile -t TOCS < "$RUNNER_TEMP/toc-files.txt"
+          for toc in "${TOCS[@]}"; do
+            if ! grep -q "^Changelog.lua" "$toc"; then
+              # Do not glue the entry onto a last line with no trailing newline
+              if [ -s "$toc" ] && [ -n "$(tail -c1 "$toc")" ]; then
+                echo >> "$toc"
+              fi
+              echo "Changelog.lua" >> "$toc"
+            fi
+          done
 
       - name: Package addon
         id: package
         run: |
           RELEASE_DIR="${{ inputs.addon_name }}"
           ZIP_NAME="${{ inputs.addon_name }}-${{ steps.version.outputs.new_version }}.zip"
+          mapfile -t TOCS < "$RUNNER_TEMP/toc-files.txt"
+
+          # Top-level entries that never ship: VCS/CI plumbing, editor and
+          # lint config, catalog metadata. None of these can be loaded by the
+          # game client.
+          EXCLUDE=(.git .github .gitignore .pkgmeta .claude .idea .editorconfig
+                   .luacheckrc .luarc.json .wowlint.json .peavers.yml
+                   catalog-info.yaml scripts local_deploy.sh local_deploy.ps1)
+          # Dev-only directories (perf harness, tests). Excluded unless a TOC
+          # lists a file inside one, in which case the addon loads it and it
+          # must ship.
+          DEV_DIRS=(perf tests tools node_modules)
+
+          FIND_ARGS=(! -name '.' ! -name '*.md' ! -name "$RELEASE_DIR")
+          for name in "${EXCLUDE[@]}"; do
+            FIND_ARGS+=(! -name "$name")
+          done
+          for name in "${DEV_DIRS[@]}"; do
+            if cat "${TOCS[@]}" | tr -d '\r' | tr '\\' '/' | grep -qiE "^[[:space:]]*${name}/"; then
+              echo "::warning::${name}/ is listed in a TOC, so it ships in the release zip"
+            else
+              FIND_ARGS+=(! -name "$name")
+            fi
+          done
 
           # Create clean copy excluding non-addon files
           mkdir -p "$RELEASE_DIR"
-          find . -maxdepth 1 ! -name '.' ! -name '.git' ! -name '.github' ! -name '.pkgmeta' ! -name '.gitignore' ! -name '*.md' ! -name 'scripts' ! -name 'local_deploy.sh' ! -name 'local_deploy.ps1' ! -name "$RELEASE_DIR" -exec cp -r {} "$RELEASE_DIR/" \;
+          find . -maxdepth 1 "${FIND_ARGS[@]}" -exec cp -r {} "$RELEASE_DIR/" \;
 
           # Create zip and cleanup
           zip -r "$ZIP_NAME" "$RELEASE_DIR"
