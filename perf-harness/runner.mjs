@@ -62,13 +62,22 @@ const budget = JSON.parse(readFileSync(budgetPath, 'utf8'));
 // Static checks
 // ---------------------------------------------------------------------------
 
-// Mirrors the .pkgmeta ignore list. Kept in step with it by hand deliberately:
-// parsing .pkgmeta would couple the budget to a packaging format that changes
-// for reasons that have nothing to do with performance.
-const IGNORE_DIRS = new Set(['.git', '.github', '.claude', 'node_modules', 'perf', '.release']);
+// Mirrors what the release workflow actually packages. Kept in step by hand
+// deliberately: parsing .pkgmeta would couple the budget to a packaging format
+// that changes for reasons that have nothing to do with performance.
+//
+// It had drifted, and a drifted list is worse than no list: `tests` was counted
+// here and excluded from the zip, so every addon that has one was measured
+// several KB heavier than anything a player downloads - PeaversCastBar read 103
+// KB against a 100 KB budget for a payload of about 87 KB. A budget is only
+// falsifiable if it measures the thing that ships.
+const IGNORE_DIRS = new Set([
+  '.git', '.github', '.claude', 'node_modules', 'perf', 'tests', 'tools', '.release',
+]);
 const IGNORE_FILES = new Set([
   '.gitignore', '.editorconfig', '.pkgmeta', 'README.md', 'CHANGELOG.md',
   'LICENSE', 'local_deploy.sh', 'local_deploy.ps1', 'package.json', 'package-lock.json',
+  '.luacheckrc', '.luarc.json', '.wowlint.json', '.peavers.yml', 'catalog-info.yaml',
 ]);
 
 function walk(dir, onFile) {
