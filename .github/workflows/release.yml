@@ -236,14 +236,21 @@ jobs:
 
       - name: Package addon
         id: package
+        env:
+          TOC_FILE: ${{ inputs.toc_file }}
         run: |
           RELEASE_DIR="${{ inputs.addon_name }}"
           ZIP_NAME="${{ inputs.addon_name }}-${{ steps.version.outputs.new_version }}.zip"
           mapfile -t TOCS < "$RUNNER_TEMP/toc-files.txt"
 
+          TOC_DIR=$(dirname "$TOC_FILE")
+          if [ "$TOC_DIR" = "." ]; then PKGMETA=".pkgmeta"; else PKGMETA="$TOC_DIR/.pkgmeta"; fi
+
           # Top-level entries that never ship: VCS/CI plumbing, editor and
           # lint config, catalog metadata. None of these can be loaded by the
-          # game client.
+          # game client. This is the floor, applied to every addon - .pkgmeta
+          # can add to it below but never take away from it, so a stale or
+          # incomplete ignore list cannot leak dev files into a release.
           EXCLUDE=(.git .github .gitignore .pkgmeta .claude .idea .editorconfig
                    .luacheckrc .luarc.json .wowlint.json .peavers.yml
                    catalog-info.yaml scripts local_deploy.sh local_deploy.ps1)
@@ -252,17 +259,59 @@ jobs:
           # must ship.
           DEV_DIRS=(perf tests tools node_modules)
 
+          # Top-level names some TOC loads from, lowercased. Anything the game
+          # loads has to ship no matter what an exclusion list says, so this
+          # overrides both lists below.
+          TOC_REFS=$(cat "${TOCS[@]}" | tr -d '\r' | tr '\\' '/' \
+            | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
+            | grep -v '^#' | grep -v '^$' \
+            | cut -d/ -f1 | tr '[:upper:]' '[:lower:]' | sort -u)
+
+          loads_from() {
+            printf '%s\n' "$TOC_REFS" \
+              | grep -qxF "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+          }
+
           FIND_ARGS=(! -name '.' ! -name '*.md' ! -name "$RELEASE_DIR")
           for name in "${EXCLUDE[@]}"; do
             FIND_ARGS+=(! -name "$name")
           done
           for name in "${DEV_DIRS[@]}"; do
-            if cat "${TOCS[@]}" | tr -d '\r' | tr '\\' '/' | grep -qiE "^[[:space:]]*${name}/"; then
+            if loads_from "$name"; then
               echo "::warning::${name}/ is listed in a TOC, so it ships in the release zip"
             else
               FIND_ARGS+=(! -name "$name")
             fi
           done
+
+          # Per-addon extras from .pkgmeta `ignore:` - artwork, specs, local
+          # harnesses. The baseline above cannot know about these, and until
+          # now nothing read them, so they shipped.
+          if [ -f "$PKGMETA" ]; then
+            while IFS= read -r entry; do
+              [ -n "$entry" ] || continue
+              case "$entry" in
+                */*)
+                  echo "::warning::$PKGMETA ignores '$entry', but only top-level names are honoured here - skipping"
+                  continue
+                  ;;
+              esac
+              if loads_from "$entry"; then
+                echo "::warning::$PKGMETA ignores '$entry' but a TOC loads from it, so it ships"
+                continue
+              fi
+              FIND_ARGS+=(! -name "$entry")
+            done <<< "$(awk '
+              /^ignore:/       { inblock = 1; next }
+              /^[^[:space:]#]/ { inblock = 0 }
+              inblock && /^[[:space:]]*-[[:space:]]*[^[:space:]#]/ {
+                sub(/^[[:space:]]*-[[:space:]]*/, "")
+                sub(/[[:space:]]*#.*$/, "")
+                sub(/[[:space:]]+$/, "")
+                if (length($0)) print
+              }
+            ' "$PKGMETA")"
+          fi
 
           # Create clean copy excluding non-addon files
           mkdir -p "$RELEASE_DIR"
