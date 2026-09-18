@@ -93,6 +93,76 @@ jobs:
           echo "TOC files:"
           cat "$RUNNER_TEMP/toc-files.txt"
 
+      # .pkgmeta `required-dependencies` is the single source of truth for what
+      # gets installed alongside this addon: it becomes the CurseForge relations
+      # below, and the updater catalog reads the same list. The .toc answers a
+      # different question - what the game refuses to load without - so the two
+      # lists are allowed to differ in one direction only. Anything the game
+      # requires must also be installed, or the addon lands broken.
+      #
+      # The reverse is fine and deliberate: PeaversUI requires its display
+      # modules here but lists them as OptionalDeps in the .toc, so the pack
+      # still loads with one switched off.
+      #
+      # Runs before the version bump so a mismatch costs nothing - no commit,
+      # no tag, no release.
+      - name: Check .toc dependencies are declared in .pkgmeta
+        env:
+          TOC_FILE: ${{ inputs.toc_file }}
+        run: |
+          TOC_DIR=$(dirname "$TOC_FILE")
+          if [ "$TOC_DIR" = "." ]; then PKGMETA=".pkgmeta"; else PKGMETA="$TOC_DIR/.pkgmeta"; fi
+
+          mapfile -t TOCS < "$RUNNER_TEMP/toc-files.txt"
+
+          # Peavers addons the game treats as required. Third-party libraries are
+          # out of scope: they are not org projects, so they are not our relations.
+          TOC_DEPS=$(cat "${TOCS[@]}" | tr -d '\r' \
+            | grep -iE '^##[[:space:]]*(Dependencies|RequiredDeps)[[:space:]]*:' \
+            | sed 's/^##[^:]*:[[:space:]]*//' \
+            | tr ',' '\n' \
+            | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
+            | grep -i '^Peavers' | sort -u || true)
+
+          if [ -z "$TOC_DEPS" ]; then
+            echo "No Peavers dependencies in the TOC; nothing to check."
+            exit 0
+          fi
+
+          # Slugs under `required-dependencies:`, stopping at the next top-level
+          # key. Commented-out entries do not count - that is the whole point.
+          REQUIRED=""
+          if [ -f "$PKGMETA" ]; then
+            REQUIRED=$(awk '
+              /^required-dependencies:/ { inblock = 1; next }
+              /^[^[:space:]#]/         { inblock = 0 }
+              inblock && /^[[:space:]]*-[[:space:]]*[^[:space:]#]/ {
+                sub(/^[[:space:]]*-[[:space:]]*/, "")
+                sub(/[[:space:]]*#.*$/, "")
+                sub(/[[:space:]]+$/, "")
+                if (length($0)) print tolower($0)
+              }
+            ' "$PKGMETA")
+          fi
+
+          MISSING=""
+          while IFS= read -r dep; do
+            [ -n "$dep" ] || continue
+            slug=$(echo "$dep" | tr '[:upper:]' '[:lower:]')
+            if ! echo "$REQUIRED" | grep -qx "$slug"; then
+              MISSING="$MISSING $dep"
+            fi
+          done <<< "$TOC_DEPS"
+
+          if [ -n "$MISSING" ]; then
+            echo "::error::Required by the game but missing from $PKGMETA required-dependencies:$MISSING"
+            echo "::error::Add the lowercase slug(s) to $PKGMETA. Users installing via the Peavers Updater or CurseForge would not get them."
+            echo "::error::If a slug is a CurseForge project still awaiting moderation, adding it fails the upload with errorCode 1018 - get it approved first."
+            exit 1
+          fi
+
+          echo "All TOC dependencies are declared in $PKGMETA."
+
       - name: Update TOC version
         env:
           NEW_VERSION: ${{ steps.version.outputs.new_version }}
