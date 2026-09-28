@@ -11,19 +11,23 @@ on:
         description: 'Sync to specific repo only (leave empty for all)'
         type: string
         default: ''
-  # Auto-trigger disabled: the canonical Sync workflow lives in
-  # peavers-warcraft/workflow-templates (correct org for warcraft-runners +
-  # Vault App token). This duplicate fired on every push and created a second,
-  # redundant PR per repo. Left as workflow_dispatch-only pending full removal.
+  # Auto-trigger stays off. There used to be two copies of this - one here and
+  # one in peavers-warcraft/workflow-templates - and both fired on every push,
+  # so every target repo collected two competing PRs. That repo has since been
+  # renamed into peavers-code as this one, so the duplicate is gone and this is
+  # the only copy left. Dispatch it by hand when the shared config changes.
 
 permissions:
   contents: write
   pull-requests: write
-  id-token: write          # mint the GitHub App token via Vault OIDC (self-hosted)
+  id-token: write          # mint the GitHub App token via Vault OIDC
 
 jobs:
   sync:
-    runs-on: peavers-code-runners   # in-cluster: reaches Vault AND has org-wide App token
+    # The App token comes from gh-app-token, which resolves Vault at run time -
+    # the in-cluster service if it answers, the public tunnel otherwise - so
+    # this stopped needing the cluster and no longer asks for it.
+    runs-on: ${{ vars.RUNNER_LABEL || 'blacksmith-4vcpu-ubuntu-2404' }}
     strategy:
       fail-fast: false
       matrix:
@@ -36,13 +40,9 @@ jobs:
           - PeaversCurrencyData
           - PeaversDynamicStats
           - PeaversItemLevel
-          - PeaversLustNow
-          - PeaversLustNowData
           - PeaversNeedThat
           - PeaversRealValue
           - PeaversRemembersYou
-          - PeaversSafeList
-          - PeaversSpellExporter
           - PeaversSystemBars
           - PeaversTalents
           - PeaversTalentsData
