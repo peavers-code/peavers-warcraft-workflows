@@ -50,7 +50,19 @@ concurrency:
 
 jobs:
   perf:
-    runs-on: ${{ vars.RUNNER_LABEL || (inputs.use_self_hosted && 'warcraft-runners' || 'ubuntu-latest') }}
+    # `use_self_hosted` means Blacksmith. The in-cluster `warcraft-runners`
+    # scale set it used to name no longer exists: ARC wedged it half-deleted on
+    # 2026-09-25, and a `runs-on` naming a pool that is not there does not fail,
+    # it queues - so four days of jobs across every addon repo sat until GitHub
+    # cancelled them at 24 hours, with the only signal being the absence of one.
+    # Nothing here needed the LAN - the App token action falls back to
+    # vault-ci.valhalla.life - so the pool is not coming back; the removal is in
+    # peavers-code/kubernetes-cluster.
+    #
+    # RUNNER_LABEL still wins, and is read from the CALLING repository - GitHub
+    # resolves a reusable workflow's vars context against the caller - so one
+    # variable per addon repo moves a single addon with no commit anywhere.
+    runs-on: ${{ vars.RUNNER_LABEL || (inputs.use_self_hosted && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-latest') }}
     steps:
       # Only needed when the results are committed back. A fork PR gets a
       # read-only token and the push step is skipped, so the measurement still
