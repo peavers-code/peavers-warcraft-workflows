@@ -143,5 +143,12 @@ jobs:
           git config user.email "${{ inputs.git_user_email }}"
           git add README.md .github/badges/perf.json
           git commit -m "chore: publish measured performance [skip ci]"
-          git pull --rebase origin ${{ github.ref_name }}
-          git push origin HEAD:${{ github.ref_name }}
+          # The release job pushes a version bump to the same branch at the same
+          # time; whichever lands second rebases and tries again.
+          for attempt in 1 2 3 4 5; do
+            git pull --rebase origin ${{ github.ref_name }}
+            if git push origin HEAD:${{ github.ref_name }}; then exit 0; fi
+            echo "Push rejected (attempt $attempt); branch moved, rebasing again."
+            sleep $((attempt * 3))
+          done
+          exit 1

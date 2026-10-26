@@ -187,8 +187,16 @@ jobs:
           git config user.email "${{ inputs.git_user_email }}"
           git add -- "${TOCS[@]}"
           git commit -m "chore: bump version to ${{ steps.version.outputs.new_version }} [skip ci]"
-          git pull --rebase origin master
-          git push
+          # Ultra Performance addons publish their README numbers to master from a
+          # job that runs alongside this one, and either can land between the other's
+          # rebase and push. Rebase and retry instead of failing the release.
+          for attempt in 1 2 3 4 5; do
+            git pull --rebase origin master
+            if git push; then exit 0; fi
+            echo "Push rejected (attempt $attempt); master moved, rebasing again."
+            sleep $((attempt * 3))
+          done
+          exit 1
 
       - name: Create and push tag
         id: tag
